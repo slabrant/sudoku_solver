@@ -32,18 +32,26 @@ body {
   font-family: 'DM Mono', monospace;
   min-height: 100vh;
   display: flex; flex-direction: column; align-items: center;
-  padding: 1.5rem 1rem 3rem; gap: 1rem;
+  padding: 1vh 1rem 2vh; gap: 0.8vh;
 }
 
-h1 { font-family:'Playfair Display',serif; font-size:2.2rem; font-weight:900; color:var(--accent); letter-spacing:-0.02em; line-height:1; }
-.subtitle { font-size:0.62rem; letter-spacing:0.22em; text-transform:uppercase; color:var(--muted); margin-top:0.2rem; }
+h1 { font-family:'Playfair Display',serif; font-size:clamp(1.6rem,4vh,3rem); font-weight:900; color:var(--accent); letter-spacing:-0.02em; line-height:1; }
+.subtitle { font-size:clamp(0.5rem,1vh,0.7rem); letter-spacing:0.22em; text-transform:uppercase; color:var(--muted); margin-top:0.2rem; }
 
-.app { display:flex; gap:1.5rem; align-items:flex-start; flex-wrap:wrap; justify-content:center; width:100%; max-width:860px; }
+.app {
+  display:flex;
+  gap:2rem;
+  align-items:flex-start;
+  flex-wrap:wrap;
+  justify-content:center;
+  width:100%;
+  max-width:1400px;
+}
 
 /* ── GRID ── */
 #grid {
   display:grid; grid-template-columns:repeat(9,1fr);
-  width:min(90vw,450px); aspect-ratio:1;
+  width:min(75vh, 90vw, 1100px); aspect-ratio:1;
   border:2px solid var(--accent);
   background:var(--border); gap:1px; padding:1px;
   user-select:none;
@@ -53,7 +61,7 @@ h1 { font-family:'Playfair Display',serif; font-size:2.2rem; font-weight:900; co
   transition:background 0.1s;
   display:flex; align-items:center; justify-content:center;
   font-family:'DM Mono',monospace;
-  font-size:clamp(0.9rem,2.8vw,1.4rem); font-weight:500;
+  font-size:clamp(0.8rem,2.8vh,2rem); font-weight:500;
   color:var(--user-color); outline:none;
 }
 .cell[data-c="2"],.cell[data-c="5"] { border-right:2px solid var(--accent-dim); }
@@ -71,19 +79,25 @@ h1 { font-family:'Playfair Display',serif; font-size:2.2rem; font-weight:900; co
   display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
   font-size:0; padding:2px; gap:0; align-items:center; justify-items:center;
 }
-.cand { font-size:clamp(0.26rem,0.82vw,0.46rem); color:var(--muted); line-height:1; width:100%; text-align:center; }
+.cand { font-size:clamp(0.8rem,0.9vh,0.55rem); color:var(--muted); line-height:1; width:100%; text-align:center; }
 .cand.off { color:transparent; }
 .cand.hint-hi { color:var(--hint-color); font-weight:500; }
 
 /* ── BOTTOM CONTROLS ── */
-.bottom-controls { display:flex; flex-direction:column; align-items:center; gap:0.6rem; width:min(90vw,450px); }
+.bottom-controls {
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:0.5vh;
+  width:min(75vh, 90vw, 1100px);
+}
 
 .mode-row { display:flex; gap:0.4rem; width:100%; }
 .mode-btn {
   flex:1; background:var(--surface2); border:1px solid var(--border);
   color:var(--muted); font-family:'DM Mono',monospace;
-  font-size:0.68rem; letter-spacing:0.06em; text-transform:uppercase;
-  padding:0.4rem; cursor:pointer; transition:all 0.15s; text-align:center;
+  font-size:clamp(0.55rem,1.1vh,0.8rem); letter-spacing:0.06em; text-transform:uppercase;
+  padding:clamp(0.3rem,0.7vh,0.5rem); cursor:pointer; transition:all 0.15s; text-align:center;
 }
 .mode-btn.active { border-color:var(--accent); color:var(--accent); background:var(--accent-dim); }
 .mode-btn:hover:not(.active) { border-color:var(--border-strong); color:var(--text); }
@@ -91,8 +105,9 @@ h1 { font-family:'Playfair Display',serif; font-size:2.2rem; font-weight:900; co
 .numpad { display:grid; grid-template-columns:repeat(9,1fr); gap:4px; width:100%; }
 .numpad button {
   background:var(--surface2); border:1px solid var(--border);
-  color:var(--text); font-family:'DM Mono',monospace; font-size:1rem;
-  padding:0.4rem 0; cursor:pointer; transition:border-color 0.15s,color 0.15s;
+  color:var(--text); font-family:'DM Mono',monospace;
+  font-size:clamp(0.8rem,2vh,1.4rem);
+  padding:clamp(0.3rem,0.8vh,0.6rem) 0; cursor:pointer; transition:border-color 0.15s,color 0.15s;
 }
 .numpad button:hover { border-color:var(--accent); color:var(--accent); }
 .numpad button:disabled { opacity:0.25; cursor:default; border-color:var(--border); color:var(--muted); }
@@ -102,9 +117,9 @@ h1 { font-family:'Playfair Display',serif; font-size:2.2rem; font-weight:900; co
 .hint-btn {
   flex:1; background:var(--surface2);
   border:1px solid var(--accent); color:var(--accent);
-  font-family:'DM Mono',monospace; font-size:0.8rem;
+  font-family:'DM Mono',monospace; font-size:clamp(0.65rem,1.2vh,0.9rem);
   letter-spacing:0.08em; text-transform:uppercase;
-  padding:0.55rem 1rem; cursor:pointer;
+  padding:clamp(0.4rem,0.8vh,0.65rem) 1rem; cursor:pointer;
   transition:background 0.15s;
 }
 .hint-btn:hover { background:var(--accent); color:var(--bg); }
