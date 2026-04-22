@@ -25,7 +25,7 @@
   --hint-secondary-bg: #c8a96e0d;
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
 
 body {
   background: var(--bg); color: var(--text);
@@ -88,13 +88,14 @@ h1 { font-family:'Playfair Display',serif; font-size:2.2rem; font-weight:900; co
 .mode-btn.active { border-color:var(--accent); color:var(--accent); background:var(--accent-dim); }
 .mode-btn:hover:not(.active) { border-color:var(--border-strong); color:var(--text); }
 
-.numpad { display:grid; grid-template-columns:repeat(5,1fr); gap:4px; width:100%; }
+.numpad { display:grid; grid-template-columns:repeat(9,1fr); gap:4px; width:100%; }
 .numpad button {
   background:var(--surface2); border:1px solid var(--border);
   color:var(--text); font-family:'DM Mono',monospace; font-size:1rem;
   padding:0.4rem 0; cursor:pointer; transition:border-color 0.15s,color 0.15s;
 }
 .numpad button:hover { border-color:var(--accent); color:var(--accent); }
+.numpad button:disabled { opacity:0.25; cursor:default; border-color:var(--border); color:var(--muted); }
 
 .action-row { display:flex; gap:0.5rem; width:100%; align-items:center; }
 
@@ -266,6 +267,7 @@ h1 { font-family:'Playfair Display',serif; font-size:2.2rem; font-weight:900; co
 
       <div class="action-row" style="position:relative;">
         <button class="hint-btn" onclick="giveHint()">Hint</button>
+        <button class="settings-btn" onclick="selected=-1;renderAll();" title="Deselect cell">⊠</button>
 
         <!-- ⚙ settings -->
         <div class="menu-wrap" id="settings-wrap">
@@ -365,7 +367,7 @@ h1 { font-family:'Playfair Display',serif; font-size:2.2rem; font-weight:900; co
 // ══════════════════════════════════════
 let board = Array(81).fill(0);
 let given = Array(81).fill(false);
-let manualCands = Array(81).fill(null); // null=auto, Set=user-modified
+let manualCands = Array(81).fill(null); // null=none eliminated, Set=digits manually struck out by user
 let selected = -1;
 let hintCells = { primary: new Set(), secondary: new Set() }; // multi-cell highlight
 let ctxTarget = -1;
@@ -375,6 +377,9 @@ let opts = { cands:true, errors:true, hl:true };
 // hint cycling: store all found hints, cycle through them
 let hintList = [];
 let hintIndex = 0;
+
+// undo — single level
+let undoSnapshot = null;
 
 // ══════════════════════════════════════
 // BUILD
@@ -396,10 +401,9 @@ function buildGrid() {
   np.innerHTML = '';
   for (let n=1;n<=9;n++) {
     const b=document.createElement('button');
-    b.textContent=n; b.addEventListener('click',()=>enterDigit(n)); np.appendChild(b);
+    b.textContent=n; b.dataset.num=n;
+    b.addEventListener('click',()=>enterDigit(n)); np.appendChild(b);
   }
-  const clr=document.createElement('button');
-  clr.textContent='✕'; clr.addEventListener('click',()=>enterDigit(0)); np.appendChild(clr);
   renderAll();
 }
 
@@ -423,10 +427,11 @@ function renderAll() {
       el.classList.remove('cands'); el.textContent = v;
     } else if (opts.cands) {
       el.classList.add('cands'); el.innerHTML = '';
-      const shown = manualCands[i] !== null ? manualCands[i] : autoCands[i];
+      const eliminated = manualCands[i] || new Set();
       for (let n=1;n<=9;n++) {
         const d=document.createElement('span'); d.className='cand';
-        if (!shown.has(n)) d.classList.add('off');
+        // hide if: not a valid auto-candidate, OR manually eliminated by user
+        if (!autoCands[i].has(n) || eliminated.has(n)) d.classList.add('off');
         d.textContent=n; el.appendChild(d);
       }
     } else { el.classList.remove('cands'); el.textContent=''; }
@@ -445,10 +450,11 @@ function selectCell(i) {
 }
 
 function onKey(e) {
+  if (e.ctrlKey && e.key==='z') { e.preventDefault(); undo(); return; }
   const dirs={ArrowUp:-9,ArrowDown:9,ArrowLeft:-1,ArrowRight:1};
   if (e.key in dirs) { e.preventDefault(); const ni=selected+dirs[e.key]; if(ni>=0&&ni<81)selectCell(ni); return; }
   if (e.key>='1'&&e.key<='9') { e.preventDefault(); enterDigit(+e.key); }
-  if (e.key==='0'||e.key==='Backspace'||e.key==='Delete') { e.preventDefault(); enterDigit(0); }
+  if (e.key==='Backspace'||e.key==='Delete') { e.preventDefault(); if(selected!==-1&&!given[selected]){saveUndo();board[selected]=0;manualCands[selected]=null;invalidateHints();clearHintHighlight();renderAll();updateNumpad();} }
 }
 
 function enterDigit(n) {
@@ -456,15 +462,20 @@ function enterDigit(n) {
   if (inputMode==='cand') {
     if (n===0) { manualCands[selected]=null; }
     else {
-      if (!manualCands[selected]) manualCands[selected]=new Set(computeAllCandidates()[selected]);
-      const mc=manualCands[selected]; if(mc.has(n)) mc.delete(n); else mc.add(n);
+      if (!manualCands[selected]) manualCands[selected]=new Set();
+      const mc=manualCands[selected];
+      if (mc.has(n)) mc.delete(n); else mc.add(n);
     }
   } else {
-    board[selected]=n; manualCands[selected]=null;
+    saveUndo();
+    // toggle: hitting the same number again clears the cell
+    board[selected] = (board[selected]===n) ? 0 : n;
+    manualCands[selected]=null;
     clearHintHighlight(); invalidateHints();
-    if (isSolved()) setTimeout(()=>document.getElementById('win-wrap').classList.add('show'),120);
+    if (board[selected] && isSolved()) setTimeout(()=>document.getElementById('win-wrap').classList.add('show'),120);
   }
   renderAll();
+  updateNumpad();
 }
 
 function setMode(m) {
@@ -472,6 +483,28 @@ function setMode(m) {
   document.getElementById('btn-normal').classList.toggle('active',m==='normal');
   document.getElementById('btn-cand').classList.toggle('active',m==='cand');
   renderAll();
+}
+
+function saveUndo() {
+  undoSnapshot = { board:[...board], manualCands:manualCands.map(s=>s?new Set(s):null) };
+}
+
+function undo() {
+  if (!undoSnapshot) return;
+  board = undoSnapshot.board;
+  manualCands = undoSnapshot.manualCands;
+  undoSnapshot = null;
+  clearHintHighlight(); invalidateHints(); renderAll(); updateNumpad();
+}
+
+// Disable numpad buttons for digits already placed 9 times
+function updateNumpad() {
+  const counts = Array(10).fill(0);
+  board.forEach(v => { if(v) counts[v]++; });
+  document.querySelectorAll('#numpad button[data-num]').forEach(btn => {
+    const n = +btn.dataset.num;
+    btn.disabled = (counts[n] >= 9);
+  });
 }
 
 // ══════════════════════════════════════
@@ -489,11 +522,15 @@ function closeMenus() {
   document.getElementById('dropdown').classList.remove('open');
   document.getElementById('settings-popover').classList.remove('open');
 }
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.key==='z') { e.preventDefault(); undo(); }
+});
 document.addEventListener('click', e => {
   if (!e.target.closest('#menu-wrap')) document.getElementById('dropdown').classList.remove('open');
   if (!e.target.closest('#settings-wrap')) document.getElementById('settings-popover').classList.remove('open');
   if (!e.target.closest('#ctx-menu')) closeCtx();
 });
+
 
 function toggleIO() {
   document.getElementById('io-toggle').classList.toggle('open');
@@ -506,7 +543,7 @@ function toggleIO() {
 function openCtx(e, i) {
   ctxTarget=i; selectCell(i);
   const auto=computeAllCandidates();
-  const shown=manualCands[i]!==null?manualCands[i]:auto[i];
+  const eliminated = manualCands[i] || new Set();
   const [r,c]=[Math.floor(i/9),i%9];
   document.getElementById('ctx-title').textContent=`R${r+1}C${c+1} candidates`;
   const cc=document.getElementById('ctx-cands'); cc.innerHTML='';
@@ -514,9 +551,11 @@ function openCtx(e, i) {
     cc.innerHTML='<div class="ctx-item" style="color:var(--muted);cursor:default">Cell is filled</div>';
   } else {
     for (let n=1;n<=9;n++) {
-      const inAuto=auto[i].has(n),inShown=shown.has(n);
+      const inAuto=auto[i].has(n);
+      const isEliminated=eliminated.has(n);
+      const isShown=inAuto && !isEliminated;
       const d=document.createElement('div'); d.className='ctx-item';
-      d.innerHTML=`<span style="${!inAuto?'color:var(--muted)':''}">${inShown?'✓':'✗'} ${n}${!inAuto?' (conflict)':''}</span>`;
+      d.innerHTML=`<span style="${!inAuto?'color:var(--muted)':''}">${isShown?'✓':'✗'} ${n}${!inAuto?' (not valid)':''}</span>`;
       d.addEventListener('click',()=>{toggleManualCand(i,n);closeCtx();}); cc.appendChild(d);
     }
   }
@@ -526,7 +565,7 @@ function openCtx(e, i) {
   menu.classList.add('show'); e.stopPropagation();
 }
 function toggleManualCand(i,n){
-  if(!manualCands[i])manualCands[i]=new Set(computeAllCandidates()[i]);
+  if(!manualCands[i])manualCands[i]=new Set();
   const mc=manualCands[i];if(mc.has(n))mc.delete(n);else mc.add(n);renderAll();
 }
 function ctxReveal(){
@@ -580,14 +619,14 @@ function checkErrors(){
 }
 function clearUserEntries(){
   for(let i=0;i<81;i++)if(!given[i]){board[i]=0;manualCands[i]=null;}
-  selected=-1;invalidateHints();clearHintHighlight();clearHintBox();renderAll();
+  selected=-1;invalidateHints();clearHintHighlight();clearHintBox();renderAll();updateNumpad();
 }
 function openModal(id){document.getElementById(id).classList.add('show');}
 function closeModal(id){document.getElementById(id).classList.remove('show');}
 function confirmReset(){
   closeModal('reset-modal');
   board=Array(81).fill(0);given=Array(81).fill(false);manualCands=Array(81).fill(null);
-  selected=-1;invalidateHints();clearHintHighlight();clearHintBox();renderAll();
+  selected=-1;invalidateHints();clearHintHighlight();clearHintBox();renderAll();updateNumpad();
 }
 function setStatus(m){document.getElementById('status').innerHTML=m;}
 function clearHintBox(){document.getElementById('hint-box').innerHTML='<div class="hint-empty">Press Hint to get a suggestion.</div>';}
@@ -608,7 +647,7 @@ function importPuzzle(){
   const arr=parseTatham(raw)||parse81(raw);
   if(!arr){setStatus('Import failed — need 81 chars (0 or . for empty).');return;}
   board=arr;given=board.map(v=>!!v);manualCands=Array(81).fill(null);
-  selected=-1;invalidateHints();clearHintHighlight();clearHintBox();renderAll();
+  selected=-1;invalidateHints();clearHintHighlight();clearHintBox();renderAll();updateNumpad();
   setStatus('Imported — filled cells locked as givens.');
 }
 function copyExport(){
@@ -807,6 +846,7 @@ function collectBruteHints(out) {
 }
 
 buildGrid();
+updateNumpad();
 </script>
 </body>
 </html>
