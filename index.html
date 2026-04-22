@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sudoku</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Playfair+Display:wght@700;900&display=swap');
+
+:root {
+  --bg: #0f0e0c;
+  --surface: #1a1915;
+  --surface2: #211f1a;
+  --border: #2e2c27;
+  --border-strong: #4a4640;
+  --accent: #c8a96e;
+  --accent-dim: #c8a96e33;
+  --text: #e8e4d8;
+  --muted: #7a7265;
+  --given-color: #c8a96e;
+  --user-color: #8bb8e8;
+  --error-color: #e87a6a;
+  --hint-color: #7ec8a0;
+  --hint-bg: #7ec8a016;
+  --hint-secondary-bg: #c8a96e0d;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg); color: var(--text);
+  font-family: 'DM Mono', monospace;
+  min-height: 100vh;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 1.5rem 1rem 3rem; gap: 1rem;
+}
+
+h1 { font-family:'Playfair Display',serif; font-size:2.2rem; font-weight:900; color:var(--accent); letter-spacing:-0.02em; line-height:1; }
+.subtitle { font-size:0.62rem; letter-spacing:0.22em; text-transform:uppercase; color:var(--muted); margin-top:0.2rem; }
+
+.app { display:flex; gap:1.5rem; align-items:flex-start; flex-wrap:wrap; justify-content:center; width:100%; max-width:860px; }
+
+/* ── GRID ── */
+#grid {
+  display:grid; grid-template-columns:repeat(9,1fr);
+  width:min(90vw,450px); aspect-ratio:1;
+  border:2px solid var(--accent);
+  background:var(--border); gap:1px; padding:1px;
+  user-select:none;
+}
+.cell {
+  background:var(--surface); cursor:pointer;
+  transition:background 0.1s;
+  display:flex; align-items:center; justify-content:center;
+  font-family:'DM Mono',monospace;
+  font-size:clamp(0.9rem,2.8vw,1.4rem); font-weight:500;
+  color:var(--user-color); outline:none;
+}
+.cell[data-c="2"],.cell[data-c="5"] { border-right:2px solid var(--accent-dim); }
+.cell[data-r="2"],.cell[data-r="5"] { border-bottom:2px solid var(--accent-dim); }
+.cell.given        { color:var(--given-color); background:#1d1c17; cursor:default; }
+.cell.sel          { background:#2a2820 !important; }
+.cell.same         { background:#252318; }
+.cell.hint-primary { background:var(--hint-bg); color:var(--hint-color); }
+.cell.hint-secondary { background:var(--hint-secondary-bg); }
+.cell.err          { background:#2a1515; color:var(--error-color); }
+.cell:hover:not(.given) { background:#222018; }
+
+/* candidates */
+.cell.cands {
+  display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
+  font-size:0; padding:2px; gap:0; align-items:center; justify-items:center;
+}
+.cand { font-size:clamp(0.26rem,0.82vw,0.46rem); color:var(--muted); line-height:1; width:100%; text-align:center; }
+.cand.off { color:transparent; }
+.cand.hint-hi { color:var(--hint-color); font-weight:500; }
+
+/* ── BOTTOM CONTROLS ── */
+.bottom-controls { display:flex; flex-direction:column; align-items:center; gap:0.6rem; width:min(90vw,450px); }
+
+.mode-row { display:flex; gap:0.4rem; width:100%; }
+.mode-btn {
+  flex:1; background:var(--surface2); border:1px solid var(--border);
+  color:var(--muted); font-family:'DM Mono',monospace;
+  font-size:0.68rem; letter-spacing:0.06em; text-transform:uppercase;
+  padding:0.4rem; cursor:pointer; transition:all 0.15s; text-align:center;
+}
+.mode-btn.active { border-color:var(--accent); color:var(--accent); background:var(--accent-dim); }
+.mode-btn:hover:not(.active) { border-color:var(--border-strong); color:var(--text); }
+
+.numpad { display:grid; grid-template-columns:repeat(5,1fr); gap:4px; width:100%; }
+.numpad button {
+  background:var(--surface2); border:1px solid var(--border);
+  color:var(--text); font-family:'DM Mono',monospace; font-size:1rem;
+  padding:0.4rem 0; cursor:pointer; transition:border-color 0.15s,color 0.15s;
+}
+.numpad button:hover { border-color:var(--accent); color:var(--accent); }
+
+.action-row { display:flex; gap:0.5rem; width:100%; align-items:center; }
+
+.hint-btn {
+  flex:1; background:var(--surface2);
+  border:1px solid var(--accent); color:var(--accent);
+  font-family:'DM Mono',monospace; font-size:0.8rem;
+  letter-spacing:0.08em; text-transform:uppercase;
+  padding:0.55rem 1rem; cursor:pointer;
+  transition:background 0.15s;
+}
+.hint-btn:hover { background:var(--accent); color:var(--bg); }
+
+/* ⋯ menu */
+.menu-wrap { position:relative; }
+.menu-trigger {
+  background:var(--surface2); border:1px solid var(--border-strong);
+  color:var(--muted); font-family:'DM Mono',monospace;
+  font-size:1.1rem; padding:0.5rem 0.8rem; cursor:pointer;
+  transition:border-color 0.15s,color 0.15s; line-height:1;
+}
+.menu-trigger:hover { border-color:var(--accent); color:var(--accent); }
+.dropdown {
+  position:absolute; bottom:calc(100% + 6px); right:0;
+  background:var(--surface); border:1px solid var(--border-strong);
+  min-width:190px; display:none; z-index:100;
+  box-shadow:0 -8px 24px #00000066;
+}
+.dropdown.open { display:block; }
+.dd-item {
+  padding:0.5rem 0.9rem; font-size:0.72rem; cursor:pointer;
+  color:var(--text); transition:background 0.1s,color 0.1s;
+  letter-spacing:0.04em;
+}
+.dd-item:hover { background:var(--accent-dim); color:var(--accent); }
+.dd-item.danger:hover { background:#2a1515; color:var(--error-color); }
+.dd-sep { border-top:1px solid var(--border); }
+
+/* ⚙ settings popover */
+.settings-btn {
+  background:var(--surface2); border:1px solid var(--border-strong);
+  color:var(--muted); font-family:'DM Mono',monospace;
+  font-size:0.9rem; padding:0.5rem 0.7rem; cursor:pointer;
+  transition:border-color 0.15s,color 0.15s; line-height:1;
+}
+.settings-btn:hover { border-color:var(--accent); color:var(--accent); }
+.settings-popover {
+  position:absolute; bottom:calc(100% + 6px); right:0;
+  background:var(--surface); border:1px solid var(--border-strong);
+  padding:0.8rem 1rem; display:none; z-index:100; min-width:210px;
+  box-shadow:0 -8px 24px #00000066;
+}
+.settings-popover.open { display:block; }
+.tog-row { display:flex; gap:0.5rem; align-items:center; font-size:0.7rem; color:var(--muted); cursor:pointer; margin-bottom:0.4rem; }
+.tog-row:last-child { margin-bottom:0; }
+.tog { width:28px; height:14px; background:var(--border); border-radius:7px; position:relative; flex-shrink:0; transition:background 0.2s; }
+.tog.on { background:var(--accent); }
+.tog::after { content:''; position:absolute; top:2px; left:2px; width:10px; height:10px; border-radius:50%; background:var(--bg); transition:left 0.2s; }
+.tog.on::after { left:16px; }
+
+.status { font-size:0.68rem; color:var(--muted); text-align:center; min-height:1rem; }
+.status b { color:var(--accent); }
+
+/* ── PANEL ── */
+.panel { flex:1; min-width:220px; max-width:300px; display:flex; flex-direction:column; gap:0.8rem; }
+.pane { background:var(--surface); border:1px solid var(--border); padding:0.9rem; }
+.pane-label { font-size:0.58rem; letter-spacing:0.22em; text-transform:uppercase; color:var(--muted); margin-bottom:0.65rem; }
+
+/* import/export — subtle collapsible */
+.io-toggle {
+  font-size:0.65rem; letter-spacing:0.12em; text-transform:uppercase;
+  color:var(--muted); cursor:pointer; display:flex; align-items:center; gap:0.4rem;
+  user-select:none; padding:0.9rem; border:1px solid var(--border);
+  background:var(--surface); transition:color 0.15s;
+}
+.io-toggle:hover { color:var(--text); }
+.io-toggle .arrow { font-size:0.5rem; transition:transform 0.2s; }
+.io-toggle.open .arrow { transform:rotate(90deg); }
+.io-body { display:none; padding:0 0.9rem 0.9rem; border:1px solid var(--border); border-top:none; background:var(--surface); }
+.io-body.open { display:block; }
+.io-area {
+  width:100%; background:var(--bg); border:1px solid var(--border);
+  color:var(--text); font-family:'DM Mono',monospace; font-size:0.68rem;
+  padding:0.45rem; resize:vertical; min-height:48px; margin-top:0.5rem;
+}
+.io-area:focus { outline:1px solid var(--accent); }
+.io-row { display:flex; gap:0.4rem; margin-top:0.4rem; }
+.io-btn {
+  background:none; border:1px solid var(--border-strong); color:var(--muted);
+  font-family:'DM Mono',monospace; font-size:0.65rem; letter-spacing:0.06em;
+  text-transform:uppercase; padding:0.35rem 0.65rem; cursor:pointer;
+  transition:border-color 0.15s,color 0.15s;
+}
+.io-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+/* hint box */
+.hint-box { font-size:0.78rem; line-height:1.75; min-height:80px; }
+.hint-strategy { color:var(--accent); font-weight:500; margin-bottom:0.4rem; font-size:0.8rem; }
+.hint-reasoning { color:var(--text); }
+.hint-empty { color:var(--muted); font-style:italic; }
+
+/* "Show answer" details */
+.hint-details { margin-top:0.6rem; }
+.hint-details summary {
+  font-size:0.68rem; color:var(--muted); cursor:pointer;
+  letter-spacing:0.06em; text-transform:uppercase;
+  list-style:none; display:flex; align-items:center; gap:0.3rem;
+  user-select:none;
+}
+.hint-details summary::-webkit-details-marker { display:none; }
+.hint-details summary::before { content:'▸'; font-size:0.55rem; transition:transform 0.15s; }
+.hint-details[open] summary::before { transform:rotate(90deg); }
+.hint-details summary:hover { color:var(--text); }
+.hint-answer { color:var(--hint-color); font-size:0.75rem; margin-top:0.4rem; line-height:1.6; }
+
+/* modals */
+.modal-wrap { display:none; position:fixed; inset:0; background:#0f0e0ccc; z-index:200; align-items:center; justify-content:center; }
+.modal-wrap.show { display:flex; }
+.modal { background:var(--surface); border:1px solid var(--accent); padding:2rem 2.5rem; text-align:center; max-width:320px; }
+.modal h3 { font-family:'Playfair Display',serif; color:var(--accent); font-size:1.4rem; margin-bottom:0.6rem; }
+.modal p  { color:var(--muted); font-size:0.78rem; margin-bottom:1.2rem; line-height:1.6; }
+.modal-btns { display:flex; gap:0.5rem; justify-content:center; }
+.mbtn {
+  background:var(--surface2); border:1px solid var(--border-strong);
+  color:var(--text); font-family:'DM Mono',monospace; font-size:0.72rem;
+  letter-spacing:0.06em; text-transform:uppercase;
+  padding:0.45rem 1rem; cursor:pointer; transition:all 0.15s;
+}
+.mbtn:hover { border-color:var(--accent); color:var(--accent); }
+.mbtn.danger:hover { border-color:var(--error-color); color:var(--error-color); }
+
+.win-wrap { display:none; position:fixed; inset:0; background:#0f0e0ccc; z-index:300; align-items:center; justify-content:center; }
+.win-wrap.show { display:flex; }
+.win-box { background:var(--surface); border:1px solid var(--accent); padding:2.5rem 3rem; text-align:center; }
+.win-box h2 { font-family:'Playfair Display',serif; font-size:2.5rem; color:var(--accent); }
+.win-box p { color:var(--muted); font-size:0.8rem; margin-top:0.4rem; }
+
+/* context menu */
+.ctx-menu { position:fixed; z-index:500; background:var(--surface); border:1px solid var(--border-strong); padding:0.4rem 0; min-width:185px; display:none; box-shadow:0 8px 24px #00000088; }
+.ctx-menu.show { display:block; }
+.ctx-item { padding:0.4rem 0.9rem; font-size:0.72rem; cursor:pointer; color:var(--text); transition:background 0.1s,color 0.1s; }
+.ctx-item:hover { background:var(--accent-dim); color:var(--accent); }
+.ctx-sep  { border-top:1px solid var(--border); margin:0.3rem 0; }
+.ctx-lbl  { padding:0.25rem 0.9rem; font-size:0.58rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.15em; }
+</style>
+</head>
+<body>
+
+<header style="text-align:center">
+  <h1>Sudoku</h1>
+  <div class="subtitle">Solver &amp; Hint Engine</div>
+</header>
+
+<div class="app">
+
+  <!-- ── LEFT: grid + controls ── -->
+  <div style="display:flex;flex-direction:column;align-items:center;gap:0.65rem;">
+
+    <div id="grid"></div>
+
+    <div class="bottom-controls">
+
+      <div class="mode-row">
+        <div class="mode-btn active" id="btn-normal" onclick="setMode('normal')">✏ Enter digits</div>
+        <div class="mode-btn" id="btn-cand" onclick="setMode('cand')">· Edit candidates</div>
+      </div>
+
+      <div class="numpad" id="numpad"></div>
+
+      <div class="action-row" style="position:relative;">
+        <button class="hint-btn" onclick="giveHint()">Hint</button>
+
+        <!-- ⚙ settings -->
+        <div class="menu-wrap" id="settings-wrap">
+          <button class="settings-btn" onclick="toggleSettings()" title="Display settings">⚙</button>
+          <div class="settings-popover" id="settings-popover">
+            <label class="tog-row" onclick="toggleOpt('cands')">
+              <div class="tog on" id="tog-cands"></div> Show candidates
+            </label>
+            <label class="tog-row" onclick="toggleOpt('errors')">
+              <div class="tog on" id="tog-errors"></div> Highlight errors
+            </label>
+            <label class="tog-row" onclick="toggleOpt('hl')">
+              <div class="tog on" id="tog-hl"></div> Highlight same digit
+            </label>
+          </div>
+        </div>
+
+        <!-- ⋯ menu -->
+        <div class="menu-wrap" id="menu-wrap">
+          <button class="menu-trigger" onclick="toggleMenu()" title="More actions">⋯</button>
+          <div class="dropdown" id="dropdown">
+            <div class="dd-item" onclick="solveAll();closeMenus()">Solve All</div>
+            <div class="dd-item" onclick="lockGivens();closeMenus()">Lock as Givens</div>
+            <div class="dd-item" onclick="checkErrors();closeMenus()">Check Errors</div>
+            <div class="dd-sep"></div>
+            <div class="dd-item" onclick="clearUserEntries();closeMenus()">Erase My Entries</div>
+            <div class="dd-item danger" onclick="closeMenus();openModal('reset-modal')">Reset Everything</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="status" id="status">Click a cell and type, or right-click for candidate options.</div>
+    </div>
+  </div>
+
+  <!-- ── RIGHT: panel ── -->
+  <div class="panel">
+
+    <!-- Hint box -->
+    <div class="pane">
+      <div class="pane-label">Hint</div>
+      <div class="hint-box" id="hint-box">
+        <div class="hint-empty">Press Hint to get a suggestion.</div>
+      </div>
+    </div>
+
+    <!-- Import / Export (subtle collapsible) -->
+    <div>
+      <div class="io-toggle" id="io-toggle" onclick="toggleIO()">
+        <span class="arrow">▸</span> Import / Export
+      </div>
+      <div class="io-body" id="io-body">
+        <textarea class="io-area" id="io-area" rows="2" placeholder="81 chars (0 or . = empty), or a Simon Tatham URL…"></textarea>
+        <div class="io-row">
+          <button class="io-btn" onclick="importPuzzle()">Import</button>
+          <button class="io-btn" onclick="copyExport()" id="copy-btn">Export &amp; Copy</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Reset modal -->
+<div class="modal-wrap" id="reset-modal">
+  <div class="modal">
+    <h3>Reset Everything?</h3>
+    <p>Clears the board, all your entries, locked givens, and candidate notes.</p>
+    <div class="modal-btns">
+      <button class="mbtn danger" onclick="confirmReset()">Reset</button>
+      <button class="mbtn" onclick="closeModal('reset-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Win -->
+<div class="win-wrap" id="win-wrap">
+  <div class="win-box">
+    <h2>Solved!</h2>
+    <p>The puzzle is complete and correct.</p><br>
+    <button class="mbtn" onclick="closeModal('win-wrap')">Close</button>
+  </div>
+</div>
+
+<!-- Context menu -->
+<div class="ctx-menu" id="ctx-menu">
+  <div class="ctx-lbl" id="ctx-title">Candidates</div>
+  <div id="ctx-cands"></div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" onclick="ctxReveal()">Reveal answer for this cell</div>
+  <div class="ctx-item" onclick="ctxClear()">Clear this cell</div>
+</div>
+
+<script>
+// ══════════════════════════════════════
+// STATE
+// ══════════════════════════════════════
+let board = Array(81).fill(0);
+let given = Array(81).fill(false);
+let manualCands = Array(81).fill(null); // null=auto, Set=user-modified
+let selected = -1;
+let hintCells = { primary: new Set(), secondary: new Set() }; // multi-cell highlight
+let ctxTarget = -1;
+let inputMode = 'normal';
+let opts = { cands:true, errors:true, hl:true };
+
+// hint cycling: store all found hints, cycle through them
+let hintList = [];
+let hintIndex = 0;
+
+// ══════════════════════════════════════
+// BUILD
+// ══════════════════════════════════════
+function buildGrid() {
+  const g = document.getElementById('grid');
+  g.innerHTML = '';
+  for (let i = 0; i < 81; i++) {
+    const r = Math.floor(i/9), c = i%9;
+    const el = document.createElement('div');
+    el.className='cell'; el.tabIndex=0;
+    el.dataset.i=i; el.dataset.r=r; el.dataset.c=c;
+    el.addEventListener('click', () => selectCell(i));
+    el.addEventListener('keydown', onKey);
+    el.addEventListener('contextmenu', e => { e.preventDefault(); openCtx(e,i); });
+    g.appendChild(el);
+  }
+  const np = document.getElementById('numpad');
+  np.innerHTML = '';
+  for (let n=1;n<=9;n++) {
+    const b=document.createElement('button');
+    b.textContent=n; b.addEventListener('click',()=>enterDigit(n)); np.appendChild(b);
+  }
+  const clr=document.createElement('button');
+  clr.textContent='✕'; clr.addEventListener('click',()=>enterDigit(0)); np.appendChild(clr);
+  renderAll();
+}
+
+// ══════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════
+function renderAll() {
+  const autoCands = computeAllCandidates();
+  const selVal = selected !== -1 ? board[selected] : 0;
+  document.querySelectorAll('.cell').forEach(el => {
+    const i = +el.dataset.i, v = board[i];
+    el.className = 'cell';
+    if (given[i]) el.classList.add('given');
+    if (i === selected) el.classList.add('sel');
+    if (hintCells.primary.has(i))   el.classList.add('hint-primary');
+    if (hintCells.secondary.has(i)) el.classList.add('hint-secondary');
+    if (opts.hl && selVal && v === selVal && i !== selected) el.classList.add('same');
+    if (opts.errors && !given[i] && v && !isValid(board,i,v)) el.classList.add('err');
+
+    if (v) {
+      el.classList.remove('cands'); el.textContent = v;
+    } else if (opts.cands) {
+      el.classList.add('cands'); el.innerHTML = '';
+      const shown = manualCands[i] !== null ? manualCands[i] : autoCands[i];
+      for (let n=1;n<=9;n++) {
+        const d=document.createElement('span'); d.className='cand';
+        if (!shown.has(n)) d.classList.add('off');
+        d.textContent=n; el.appendChild(d);
+      }
+    } else { el.classList.remove('cands'); el.textContent=''; }
+  });
+  const filled=board.filter(v=>v).length;
+  const modeNote = inputMode==='cand' ? ' · <b style="color:var(--accent)">candidate mode</b>' : '';
+  document.getElementById('status').innerHTML=`<b>${filled}</b>/81 filled${modeNote}`;
+}
+
+// ══════════════════════════════════════
+// INTERACTION
+// ══════════════════════════════════════
+function selectCell(i) {
+  selected=i; clearHintHighlight(); renderAll();
+  document.querySelectorAll('.cell')[i].focus();
+}
+
+function onKey(e) {
+  const dirs={ArrowUp:-9,ArrowDown:9,ArrowLeft:-1,ArrowRight:1};
+  if (e.key in dirs) { e.preventDefault(); const ni=selected+dirs[e.key]; if(ni>=0&&ni<81)selectCell(ni); return; }
+  if (e.key>='1'&&e.key<='9') { e.preventDefault(); enterDigit(+e.key); }
+  if (e.key==='0'||e.key==='Backspace'||e.key==='Delete') { e.preventDefault(); enterDigit(0); }
+}
+
+function enterDigit(n) {
+  if (selected===-1||given[selected]) return;
+  if (inputMode==='cand') {
+    if (n===0) { manualCands[selected]=null; }
+    else {
+      if (!manualCands[selected]) manualCands[selected]=new Set(computeAllCandidates()[selected]);
+      const mc=manualCands[selected]; if(mc.has(n)) mc.delete(n); else mc.add(n);
+    }
+  } else {
+    board[selected]=n; manualCands[selected]=null;
+    clearHintHighlight(); invalidateHints();
+    if (isSolved()) setTimeout(()=>document.getElementById('win-wrap').classList.add('show'),120);
+  }
+  renderAll();
+}
+
+function setMode(m) {
+  inputMode=m;
+  document.getElementById('btn-normal').classList.toggle('active',m==='normal');
+  document.getElementById('btn-cand').classList.toggle('active',m==='cand');
+  renderAll();
+}
+
+// ══════════════════════════════════════
+// MENUS
+// ══════════════════════════════════════
+function toggleMenu() {
+  document.getElementById('dropdown').classList.toggle('open');
+  document.getElementById('settings-popover').classList.remove('open');
+}
+function toggleSettings() {
+  document.getElementById('settings-popover').classList.toggle('open');
+  document.getElementById('dropdown').classList.remove('open');
+}
+function closeMenus() {
+  document.getElementById('dropdown').classList.remove('open');
+  document.getElementById('settings-popover').classList.remove('open');
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#menu-wrap')) document.getElementById('dropdown').classList.remove('open');
+  if (!e.target.closest('#settings-wrap')) document.getElementById('settings-popover').classList.remove('open');
+  if (!e.target.closest('#ctx-menu')) closeCtx();
+});
+
+function toggleIO() {
+  document.getElementById('io-toggle').classList.toggle('open');
+  document.getElementById('io-body').classList.toggle('open');
+}
+
+// ══════════════════════════════════════
+// CONTEXT MENU
+// ══════════════════════════════════════
+function openCtx(e, i) {
+  ctxTarget=i; selectCell(i);
+  const auto=computeAllCandidates();
+  const shown=manualCands[i]!==null?manualCands[i]:auto[i];
+  const [r,c]=[Math.floor(i/9),i%9];
+  document.getElementById('ctx-title').textContent=`R${r+1}C${c+1} candidates`;
+  const cc=document.getElementById('ctx-cands'); cc.innerHTML='';
+  if (board[i]) {
+    cc.innerHTML='<div class="ctx-item" style="color:var(--muted);cursor:default">Cell is filled</div>';
+  } else {
+    for (let n=1;n<=9;n++) {
+      const inAuto=auto[i].has(n),inShown=shown.has(n);
+      const d=document.createElement('div'); d.className='ctx-item';
+      d.innerHTML=`<span style="${!inAuto?'color:var(--muted)':''}">${inShown?'✓':'✗'} ${n}${!inAuto?' (conflict)':''}</span>`;
+      d.addEventListener('click',()=>{toggleManualCand(i,n);closeCtx();}); cc.appendChild(d);
+    }
+  }
+  const menu=document.getElementById('ctx-menu');
+  menu.style.left=Math.min(e.clientX,window.innerWidth-200)+'px';
+  menu.style.top=Math.min(e.clientY,window.innerHeight-320)+'px';
+  menu.classList.add('show'); e.stopPropagation();
+}
+function toggleManualCand(i,n){
+  if(!manualCands[i])manualCands[i]=new Set(computeAllCandidates()[i]);
+  const mc=manualCands[i];if(mc.has(n))mc.delete(n);else mc.add(n);renderAll();
+}
+function ctxReveal(){
+  closeCtx();const b=[...board];if(!solve(b))return;
+  if(ctxTarget!==-1&&!given[ctxTarget]){board[ctxTarget]=b[ctxTarget];manualCands[ctxTarget]=null;invalidateHints();renderAll();if(isSolved())setTimeout(()=>document.getElementById('win-wrap').classList.add('show'),120);}
+}
+function ctxClear(){
+  closeCtx();if(ctxTarget!==-1&&!given[ctxTarget]){board[ctxTarget]=0;manualCands[ctxTarget]=null;renderAll();}
+}
+function closeCtx(){document.getElementById('ctx-menu').classList.remove('show');}
+
+// ══════════════════════════════════════
+// SUDOKU LOGIC
+// ══════════════════════════════════════
+function peers(i){
+  const r=Math.floor(i/9),c=i%9,br=Math.floor(r/3)*3,bc=Math.floor(c/3)*3,s=new Set();
+  for(let j=0;j<9;j++){s.add(r*9+j);s.add(j*9+c);}
+  for(let dr=0;dr<3;dr++)for(let dc=0;dc<3;dc++)s.add((br+dr)*9+(bc+dc));
+  s.delete(i);return s;
+}
+function isValid(b,i,v){for(const p of peers(i))if(b[p]===v)return false;return true;}
+function candidates(b,i){
+  if(b[i])return new Set();
+  const used=new Set();for(const p of peers(i))if(b[p])used.add(b[p]);
+  const s=new Set();for(let n=1;n<=9;n++)if(!used.has(n))s.add(n);return s;
+}
+function computeAllCandidates(){return Array.from({length:81},(_,i)=>candidates(board,i));}
+function isSolved(){if(board.includes(0))return false;for(let i=0;i<81;i++)if(!isValid(board,i,board[i]))return false;return true;}
+function solve(b){const idx=b.indexOf(0);if(idx===-1)return true;for(let n=1;n<=9;n++){if(isValid(b,idx,n)){b[idx]=n;if(solve(b))return true;b[idx]=0;}}return false;}
+function setsEqual(a,b){if(a.size!==b.size)return false;for(const v of a)if(!b.has(v))return false;return true;}
+
+// ══════════════════════════════════════
+// ACTIONS
+// ══════════════════════════════════════
+function solveAll(){
+  const b=[...board];
+  if(solve(b)){board=b;invalidateHints();clearHintHighlight();renderAll();if(isSolved())setTimeout(()=>document.getElementById('win-wrap').classList.add('show'),120);}
+  else setStatus('No solution — check for conflicts.');
+}
+function lockGivens(){
+  let errs=0;
+  for(let i=0;i<81;i++)if(board[i]){if(!isValid(board,i,board[i]))errs++;else given[i]=true;}
+  if(errs)setStatus(`${errs} conflict(s) — fix before locking.`);
+  else setStatus('Givens locked.');
+  renderAll();
+}
+function checkErrors(){
+  let errs=0;
+  for(let i=0;i<81;i++)if(!given[i]&&board[i]&&!isValid(board,i,board[i]))errs++;
+  setStatus(errs?`${errs} conflict(s) found.`:board.includes(0)?'No conflicts so far.':'Solved correctly!');
+}
+function clearUserEntries(){
+  for(let i=0;i<81;i++)if(!given[i]){board[i]=0;manualCands[i]=null;}
+  selected=-1;invalidateHints();clearHintHighlight();clearHintBox();renderAll();
+}
+function openModal(id){document.getElementById(id).classList.add('show');}
+function closeModal(id){document.getElementById(id).classList.remove('show');}
+function confirmReset(){
+  closeModal('reset-modal');
+  board=Array(81).fill(0);given=Array(81).fill(false);manualCands=Array(81).fill(null);
+  selected=-1;invalidateHints();clearHintHighlight();clearHintBox();renderAll();
+}
+function setStatus(m){document.getElementById('status').innerHTML=m;}
+function clearHintBox(){document.getElementById('hint-box').innerHTML='<div class="hint-empty">Press Hint to get a suggestion.</div>';}
+function clearHintHighlight(){hintCells={primary:new Set(),secondary:new Set()};}
+function toggleOpt(k){
+  opts[k]=!opts[k];
+  document.getElementById('tog-'+k).classList.toggle('on',opts[k]);
+  renderAll();
+}
+
+// ══════════════════════════════════════
+// IMPORT / EXPORT
+// ══════════════════════════════════════
+function parse81(s){const c=s.replace(/[^0-9.]/g,'').replace(/\./g,'0');return c.length===81?c.split('').map(Number):null;}
+function parseTatham(url){const m=url.match(/solo[^#]*#(.+)/);if(m){const d=m[1].replace(/_/g,'0').replace(/,/g,'');return d.length===81?d.split('').map(Number):null;}return null;}
+function importPuzzle(){
+  const raw=document.getElementById('io-area').value.trim();
+  const arr=parseTatham(raw)||parse81(raw);
+  if(!arr){setStatus('Import failed — need 81 chars (0 or . for empty).');return;}
+  board=arr;given=board.map(v=>!!v);manualCands=Array(81).fill(null);
+  selected=-1;invalidateHints();clearHintHighlight();clearHintBox();renderAll();
+  setStatus('Imported — filled cells locked as givens.');
+}
+function copyExport(){
+  const str=board.map(v=>v||'.').join('');
+  document.getElementById('io-area').value=str;
+  navigator.clipboard.writeText(str).catch(()=>{
+    const a=document.getElementById('io-area');a.select();document.execCommand('copy');
+  });
+  const b=document.getElementById('copy-btn');b.textContent='Copied!';setTimeout(()=>b.textContent='Export & Copy',1500);
+}
+
+// ══════════════════════════════════════
+// HINT ENGINE — collect all, cycle
+// ══════════════════════════════════════
+
+function invalidateHints() { hintList=[]; hintIndex=0; }
+
+function giveHint() {
+  // Rebuild hint list fresh each time so hints reflect current board state
+  hintList = collectAllHints();
+  if (!hintList.length) {
+    clearHintBox(); clearHintHighlight(); renderAll(); return;
+  }
+  hintIndex = hintIndex % hintList.length;
+  applyHint(hintList[hintIndex]);
+  hintIndex = (hintIndex + 1) % hintList.length;
+}
+
+function applyHint(h) {
+  hintCells = { primary: new Set(h.primary), secondary: new Set(h.secondary) };
+  document.getElementById('hint-box').innerHTML = `
+    <div class="hint-strategy">${h.strategy}</div>
+    <div class="hint-reasoning">${h.reasoning}</div>
+    <details class="hint-details">
+      <summary>Show answer</summary>
+      <div class="hint-answer">${h.answer}</div>
+    </details>
+  `;
+  renderAll();
+}
+
+// Collect every applicable hint across the whole board
+function collectAllHints() {
+  const hints = [];
+  collectNakedSingles(hints);
+  collectHiddenSingles(hints);
+  collectNakedPairs(hints);
+  collectPointingPairs(hints);
+  collectXWings(hints);
+  if (!hints.length) collectBruteHints(hints);
+  return hints;
+}
+
+// ── Naked Single ──────────────────────
+function collectNakedSingles(out) {
+  for (let i=0;i<81;i++) {
+    if (board[i]) continue;
+    const c=candidates(board,i);
+    if (c.size===1) {
+      const n=[...c][0],[r,col]=[Math.floor(i/9),i%9];
+      // secondary: peers that contain this digit (explain why it's forced)
+      const secondary = [...peers(i)].filter(p=>board[p]===n);
+      out.push({
+        strategy:'Naked Single',
+        reasoning:`Scan row ${r+1}, column ${col+1}, and its box — every other digit is already placed. Only one candidate remains in R${r+1}C${col+1}.`,
+        answer:`Place <b>${n}</b> in R${r+1}C${col+1}.`,
+        primary:[i], secondary
+      });
+    }
+  }
+}
+
+// ── Hidden Single ─────────────────────
+function collectHiddenSingles(out) {
+  const units=[];
+  for(let r=0;r<9;r++)units.push({t:'row',label:`row ${r+1}`,cells:Array.from({length:9},(_,c)=>r*9+c)});
+  for(let c=0;c<9;c++)units.push({t:'col',label:`column ${c+1}`,cells:Array.from({length:9},(_,r)=>r*9+c)});
+  for(let br=0;br<3;br++)for(let bc=0;bc<3;bc++){const box=[];for(let dr=0;dr<3;dr++)for(let dc=0;dc<3;dc++)box.push((br*3+dr)*9+(bc*3+dc));units.push({t:'box',label:`box (${br+1},${bc+1})`,cells:box});}
+  for(const{label,cells}of units)for(let n=1;n<=9;n++){
+    const pos=cells.filter(i=>!board[i]&&candidates(board,i).has(n));
+    if(pos.length===1){
+      const i=pos[0],[r,c]=[Math.floor(i/9),i%9];
+      // secondary: the other cells in unit that are empty (can't hold n)
+      const secondary=cells.filter(j=>j!==i&&!board[j]);
+      out.push({
+        strategy:'Hidden Single',
+        reasoning:`Look at ${label} — the digit <b>${n}</b> has only one possible cell. All other empty cells in this ${label.split(' ')[0]} are blocked from holding ${n}.`,
+        answer:`Place <b>${n}</b> in R${r+1}C${c+1}.`,
+        primary:[i], secondary
+      });
+    }
+  }
+}
+
+// ── Naked Pair ────────────────────────
+function collectNakedPairs(out) {
+  const units=[];
+  for(let r=0;r<9;r++)units.push({t:'row',label:`row ${r+1}`,cells:Array.from({length:9},(_,c)=>r*9+c)});
+  for(let c=0;c<9;c++)units.push({t:'col',label:`column ${c+1}`,cells:Array.from({length:9},(_,r)=>r*9+c)});
+  for(let br=0;br<3;br++)for(let bc=0;bc<3;bc++){const b=[];for(let dr=0;dr<3;dr++)for(let dc=0;dc<3;dc++)b.push((br*3+dr)*9+(bc*3+dc));units.push({t:'box',label:`box (${br+1},${bc+1})`,cells:b});}
+  for(const{label,cells}of units){
+    const empty=cells.filter(i=>!board[i]);
+    for(let a=0;a<empty.length;a++){
+      const ca=candidates(board,empty[a]);if(ca.size!==2)continue;
+      for(let b=a+1;b<empty.length;b++){
+        const cb=candidates(board,empty[b]);
+        if(cb.size===2&&setsEqual(ca,cb)){
+          const pn=[...ca];
+          const others=empty.filter((_,k)=>k!==a&&k!==b);
+          const elimCells=others.filter(i=>pn.some(n=>candidates(board,i).has(n)));
+          if(elimCells.length){
+            const[ra,ca2]=[Math.floor(empty[a]/9),empty[a]%9];
+            const[rb,cb2]=[Math.floor(empty[b]/9),empty[b]%9];
+            out.push({
+              strategy:'Naked Pair',
+              reasoning:`R${ra+1}C${ca2+1} and R${rb+1}C${cb2+1} (highlighted green) share exactly the candidates {${pn.join(', ')}}. Those two digits are "used up" between them, so the amber cells in this ${label.split(' ')[0]} can't hold ${pn.join(' or ')}.`,
+              answer:`Eliminate <b>${pn.join(', ')}</b> from the amber cells in ${label}. Right-click them to strike out candidates.`,
+              primary:[empty[a],empty[b]], secondary:elimCells
+            });
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── Pointing Pair/Triple ──────────────
+function collectPointingPairs(out) {
+  for(let br=0;br<3;br++)for(let bc=0;bc<3;bc++){
+    const boxCells=[];for(let dr=0;dr<3;dr++)for(let dc=0;dc<3;dc++)boxCells.push((br*3+dr)*9+(bc*3+dc));
+    for(let n=1;n<=9;n++){
+      const pos=boxCells.filter(i=>!board[i]&&candidates(board,i).has(n));
+      if(pos.length<2||pos.length>3)continue;
+      const rows=[...new Set(pos.map(i=>Math.floor(i/9)))];
+      if(rows.length===1){
+        const rowCells=Array.from({length:9},(_,c)=>rows[0]*9+c).filter(i=>!boxCells.includes(i));
+        const elim=rowCells.filter(i=>!board[i]&&candidates(board,i).has(n));
+        if(elim.length)out.push({
+          strategy:'Pointing Pair',
+          reasoning:`In box (${br+1},${bc+1}), the digit <b>${n}</b> (green cells) is confined to row ${rows[0]+1}. Since ${n} must go somewhere in that box-row, it cannot appear in row ${rows[0]+1} outside the box (amber).`,
+          answer:`Eliminate <b>${n}</b> from row ${rows[0]+1} outside box (${br+1},${bc+1}).`,
+          primary:pos, secondary:elim
+        });
+      }
+      const cols=[...new Set(pos.map(i=>i%9))];
+      if(cols.length===1){
+        const colCells=Array.from({length:9},(_,r)=>r*9+cols[0]).filter(i=>!boxCells.includes(i));
+        const elim=colCells.filter(i=>!board[i]&&candidates(board,i).has(n));
+        if(elim.length)out.push({
+          strategy:'Pointing Pair',
+          reasoning:`In box (${br+1},${bc+1}), the digit <b>${n}</b> (green cells) is confined to column ${cols[0]+1}. So ${n} can't appear in column ${cols[0]+1} outside the box (amber).`,
+          answer:`Eliminate <b>${n}</b> from column ${cols[0]+1} outside box (${br+1},${bc+1}).`,
+          primary:pos, secondary:elim
+        });
+      }
+    }
+  }
+}
+
+// ── X-Wing ───────────────────────────
+function collectXWings(out) {
+  for(let n=1;n<=9;n++){
+    const rowCols=[];
+    for(let r=0;r<9;r++){const cols=[];for(let c=0;c<9;c++)if(!board[r*9+c]&&candidates(board,r*9+c).has(n))cols.push(c);if(cols.length===2)rowCols.push({r,cols});}
+    for(let a=0;a<rowCols.length;a++)for(let b=a+1;b<rowCols.length;b++){
+      if(rowCols[a].cols[0]===rowCols[b].cols[0]&&rowCols[a].cols[1]===rowCols[b].cols[1]){
+        const[c1,c2]=[rowCols[a].cols[0],rowCols[a].cols[1]];
+        const[r1,r2]=[rowCols[a].r,rowCols[b].r];
+        const corners=[r1*9+c1,r1*9+c2,r2*9+c1,r2*9+c2];
+        const elim=[];
+        for(let r=0;r<9;r++){if(r===r1||r===r2)continue;if(!board[r*9+c1]&&candidates(board,r*9+c1).has(n))elim.push(r*9+c1);if(!board[r*9+c2]&&candidates(board,r*9+c2).has(n))elim.push(r*9+c2);}
+        if(elim.length)out.push({
+          strategy:'X-Wing',
+          reasoning:`Digit <b>${n}</b> appears in exactly two spots in both row ${r1+1} and row ${r2+1}, and those spots share columns ${c1+1} and ${c2+1}. This "X" pattern (green) means ${n} is locked to those columns — the amber cells can't hold ${n}.`,
+          answer:`Eliminate <b>${n}</b> from columns ${c1+1} & ${c2+1} in all other rows.`,
+          primary:corners, secondary:elim
+        });
+      }
+    }
+  }
+}
+
+// ── Brute fallback ───────────────────
+function collectBruteHints(out) {
+  const b=[...board];if(!solve(b))return;
+  for(let i=0;i<81;i++)if(!board[i]){
+    const[r,c]=[Math.floor(i/9),i%9];
+    out.push({
+      strategy:'Direct Answer',
+      reasoning:`This position may require an advanced technique beyond standard patterns. Here is a direct answer for one cell.`,
+      answer:`Place <b>${b[i]}</b> in R${r+1}C${c+1}.`,
+      primary:[i], secondary:[]
+    });
+    break;
+  }
+}
+
+buildGrid();
+</script>
+</body>
+</html>
